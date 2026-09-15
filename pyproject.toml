@@ -1,0 +1,21 @@
+[project]
+name = "comfyui-docker"
+version = "0.1.0"
+description = "Project to use an LLM running in Docker Model Runner to make a prompt to generate images in ComfyUI"
+readme = "README.md"
+authors = [
+    { name = "Cecil Grey", email = "captaingrey63@yahoo.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "comfy-cli>=1.20.0",
+    "docker>=7.2.0",
+    "openai>=3.13.0",
+]
+
+[project.scripts]
+gen_from_llm = "comfyui_docker.gen_from_llm:main"
+
+[build-system]
+requires = ["uv_build>=0.12.10,<0.13.0"]
+build-backend = "uv_build"

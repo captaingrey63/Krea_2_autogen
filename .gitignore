@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+input/
+models/
+output/
+comfyui-models/
+vllm-models/
+# identifying configuration files
+.env
+
+# Virtual environments
+.venv
+.python-version
+comfy-config.ini

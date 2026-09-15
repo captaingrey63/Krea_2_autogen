@@ -1,0 +1,207 @@
+Afghan
+Albanian
+Algerian
+Andorran
+Angolan
+Antiguan
+Argentine
+Armenian
+Australian
+Austrian
+Azerbaijani
+Bahamian
+Bahraini
+Bengali
+Barbadian
+Belarusian
+Belgian
+Belizean
+Beninese
+Bhutanese
+Bolivian
+Bosnian
+Botswanan
+Brazilian
+Bruneian
+Bulgarian
+Burkinabé
+Burmese
+Burundian
+Cabo Verdean
+Cambodian
+Cameroonian
+Canadian
+Central African
+Chadian
+Chilean
+Chinese
+Colombian
+Comorian
+Congolese
+Congolese
+Costa Rican
+Ivorian
+Croatian
+Cuban
+Cypriot
+Czech
+Danish
+Djiboutian
+Dominican
+Dominican
+Timorese
+Ecuadorian
+Egyptian
+Salvadoran
+Equatorial Guinean
+Eritrean
+Estonian
+Ethiopian
+Fijian
+Finnish
+French
+Gabonese
+Gambian
+Georgian
+German
+Ghanaian
+Gibraltar
+Greek
+Hellenic
+Grenadian
+Guatemalan
+Guinean
+Bissau-Guinean
+Guyanese
+Haitian
+Honduran
+Hungarian
+Icelandic
+Indian
+Indonesian
+Iranian
+Persian
+Iraqi
+Irish
+Israeli
+Italian
+Ivorian
+Jamaican
+Japanese
+Jordanian
+Kazakh
+Kenyan
+I-Kiribati
+North Korean
+South Korean
+Kuwaiti
+Kyrgyz
+Lao, Laotian
+Latvian, Lettish
+Lebanese
+Basotho
+Liberian
+Libyan
+Liechtensteiner
+Lithuanian
+Luxembourgish
+Macedonian
+Malagasy
+Malawian
+Malaysian
+Maldivian
+Malian, Malinese
+Maltese
+Marshallese
+Martinican
+Mauritanian
+Mauritian
+Mexican
+Micronesian
+Moldovan
+Monacan
+Mongolian
+Montenegrin
+Moroccan
+Mozambican
+Namibian
+Nauruan
+Nepalese
+Dutch
+New Zealand
+Nicaraguan
+Nigerien
+Nigerian
+Northern Marianan
+Norwegian
+Omani
+Pakistani
+Palauan
+Palestinian
+Panamanian
+Papua New Guinean
+Paraguayan
+Peruvian
+Filipino
+Polish
+Portuguese
+Puerto Rican
+Qatari
+Romanian
+Russian
+Rwandan
+Kittitian
+Nevisian
+Saint Lucian
+Saint Vincentian
+Samoan
+Sammarinese
+São Toméan
+Saudi
+Senegalese
+Serbian
+Seychellois
+Sierra Leonean
+Singaporean
+Slovak
+Slovenian
+Somali
+South African
+South Sudanese
+Spanish
+Sri Lankan
+Sudanese
+Surinamese
+Swazi
+Swedish
+Swiss
+Syrian
+Tajikistani
+Tanzanian
+Thai
+Timorese
+Togolese
+Tokelauan
+Tongan
+Trinidadian
+Tunisian
+Turkish
+Turkmen
+Tuvaluan
+Ugandan
+Ukrainian
+Emirati
+British
+Irish
+Scottish
+Welsh
+American
+Uruguayan
+Uzbek
+Vanuatuan
+Vatican
+Venezuelan
+Vietnamese
+Yemeni
+Zambian
+Zimbabwean
