@@ -67,6 +67,7 @@ def main():
     parser.add_argument("--temperature", "-t", type=float, default=0.7)
     parser.add_argument("--image")
     parser.add_argument("--random", action="store_true")
+    parser.add_argument("--wait", action="store_true")
     args = parser.parse_args()
 
     # Read in the system prompt
@@ -196,6 +197,8 @@ def main():
         exit(proc.returncode)
     logger.info("Queuing ComfyUI workflow")
     cmd = f"uv run comfy run --workflow {args.workflow}".split()
+    if args.wait == True :
+        cmd.append("--wait")
     proc = subprocess.run(cmd)
     if proc.returncode != 0:
         logger.error(f"ERROR: command \"{' '.join(cmd)}\" returned {proc.returncode}")
