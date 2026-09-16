@@ -17,3 +17,4 @@ vllm-models/
 .venv
 .python-version
 comfy-config.ini
+uv.lock

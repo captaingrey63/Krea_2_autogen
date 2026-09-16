@@ -21,20 +21,6 @@ def get_image_mime_type(file_path:Path):
         return f"image/{mime_type}"
     return None
 
-def print_truncated_messages(messages:List[Dict[str,str|Dict[str,str]]]) :
-    truncated_messages = []
-    for message in messages:
-        truncated_message = dict()
-        for (key, item) in message.items():
-            if type(item) == str :
-                truncated_message[key] = (item[:20] + ' ...') if len(item) > 20 else item
-            elif type(item) == dict :
-                trunc_item = dict()
-                for (sub_key, sub_item) in item.items():
-                    trunc_item[sub_key] = (sub_item[0:20] + ' ...') if len(sub_item) > 20 else sub_item
-                truncated_message[key] = trunc_item
-        truncated_messages.append(truncated_message)
-    logger.debug(json.dumps(truncated_messages, indent=2))
 def main():
     parser = ArgumentParser()
     parser.add_argument("PROMPT", nargs="*")
@@ -43,7 +29,9 @@ def main():
     parser.add_argument("--free-model", "-F", action="store_true",
                         help="Tell the Docker Model Runner to free memory")
     parser.add_argument("--model", "-m", default="docker.io/local/gemma-4:latest")
-    parser.add_argument("--openai-base-url", "-e", type=str)
+    parser.add_argument("--dmr-base-url", "-e", type=str)
+    parser.add_argument("--workflow", "-w", default="workflows/krea_2_turbo.json")
+    parser.add_argument("--slot", "-S", default="6.text")
     parser.add_argument("--api-key", "-a", type=str)
     parser.add_argument("--system-prompt", "-s", type=str)
     parser.add_argument("--max-tokens", "-M", type=int, default=2048)
@@ -83,10 +71,10 @@ def main():
     api_key = os.environ.get("OPENAI_API_KEY", None) if args.api_key == None else args.api_key
     if api_key == None:
         api_key = "Dummy"
-    base_url = os.environ.get("OPENAI_BASE_URL", None) if args.openai_base_url == None else args.openai_base_url
+    base_url = os.environ.get("OPENAI_BASE_URL", None) if args.dmr_base_url == None else args.dmr_base_url
     # Default to the Docker Model Runner endpoint
     if base_url == None :
-        base_url = "http://172.17.0.1:12434/v1"
+        base_url = "http://172.17.0.1:12434/engines/llama.cpp/v1/"
     client = OpenAI(base_url = base_url,
                     api_key = api_key)
     # Gather the user prompt if supplied
@@ -121,6 +109,7 @@ def main():
         prompt = ' '.join(args.PROMPT)
     else : 
         prompt = None
+    
     messages = [
         {"role": "system", "content": system_prompt}
     ]
@@ -130,12 +119,14 @@ def main():
             exit(1)
         messages.append({"role": "user", "content": prompt})
     if b64_image != None :
-        messages.append({"role": "user", "content" : []})
+        content = {"role": "user", "content" : []}
         if prompt != None:
-            messages[-1]["content"].append({"type": "text", "text": prompt})
-        messages[-1]["content"].append({"type": "image_url", "image_url": f"data:{mime_type};base64,{b64_image}"})
+            content["content"].append({"type": "text", "text": prompt})
+        content["content"].append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_image}"}})
+        messages.append(content)
 
-    print_truncated_messages(messages)
+    logger.debug(json.dumps(messages, indent=2))
+
     try :
         response = client.chat.completions.create(
             model=args.model,
@@ -161,13 +152,13 @@ def main():
         if proc.returncode != 0:
             logger.error(f"ERROR: command \"{' '.join(cmd)}\" returned {proc.returncode}")
             exit(proc.returncode)
-    cmd = "uv run comfy workflow set-slot workflows/krea_2_turbo.json".split()
-    proc = subprocess.run(cmd + [f"6.text={response.choices[0].message.content}"])
+    cmd = f"uv run comfy workflow set-slot {args.workflow}".split()
+    proc = subprocess.run(cmd + [f"{args.slot}={response.choices[0].message.content}"])
     if proc.returncode != 0:
         logger.error(f"ERROR: command \"{' '.join(cmd)}\" returned {proc.returncode}")
         exit(proc.returncode)
     logger.info("Queuing ComfyUI workflow")
-    cmd = "uv run comfy run --workflow workflows/krea_3_lora.json".split()
+    cmd = f"uv run comfy run --workflow {args.workflow}".split()
     proc = subprocess.run(cmd)
     if proc.returncode != 0:
         logger.error(f"ERROR: command \"{' '.join(cmd)}\" returned {proc.returncode}")

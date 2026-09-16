@@ -57,7 +57,6 @@ Hardware / Software used:
    ![Example Image](example.jpg)
 # Bugs
 1. The output folder images are owned by root. You'll have to use `sudo chown` to access them outside of the ComfyUI web interface
-2. The image tag doesn't work yet, it's complaining about invalid Base 64 encoding
 
 # Licence
 This code is public domain. Don't bother giving me credit. All the training data for these models are stolen.
