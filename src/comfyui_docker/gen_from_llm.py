@@ -9,6 +9,8 @@ import imghdr
 import json
 from typing import Dict, List, Any
 import random
+import math
+
 import logging
 logger = logging.getLogger("gen_from_llm")
 console_handler = logging.StreamHandler()
@@ -21,6 +23,30 @@ def get_image_mime_type(file_path:Path):
         return f"image/{mime_type}"
     return None
 
+
+def get_image_dimensions(image_path):
+    import cv2
+    """
+    Get the dimensions (width, height) of an image file using OpenCV.
+
+    Args:
+        image_path (str): Path to the image file
+
+    Returns:
+        tuple: (width, height) of the image
+    """
+    # Read the image
+    image = cv2.imread(image_path)
+
+    # Check if image was loaded successfully
+    if image is None:
+        raise FileNotFoundError(f"Could not read image at path: {image_path}")
+
+    # Get dimensions (height, width, channels)
+    height, width = image.shape[:2]
+
+    return width, height
+
 def main():
     parser = ArgumentParser()
     parser.add_argument("PROMPT", nargs="*")
@@ -31,7 +57,10 @@ def main():
     parser.add_argument("--model", "-m", default="docker.io/local/gemma-4:latest")
     parser.add_argument("--dmr-base-url", "-e", type=str)
     parser.add_argument("--workflow", "-w", default="workflows/krea_2_turbo.json")
-    parser.add_argument("--slot", "-S", default="6.text")
+    parser.add_argument("--prompt-slot", "-S", default="6.text")
+    parser.add_argument("--width-slot", default="9.width")
+    parser.add_argument("--height-slot", default="9.height")
+    parser.add_argument("--pixels", type=int, default=2048, help="Width + height for generated image from a supplied image")
     parser.add_argument("--api-key", "-a", type=str)
     parser.add_argument("--system-prompt", "-s", type=str)
     parser.add_argument("--max-tokens", "-M", type=int, default=2048)
@@ -49,7 +78,8 @@ def main():
         print(f"ERROR, f{prompt_file} does not exist")
         exit(1)
     system_prompt = prompt_file.read_text(encoding="utf-8")
-
+    width = 1024
+    height = 1024
     # Read in the base image if supplied
     if args.image != None :
         image_path = Path(args.image)
@@ -59,6 +89,10 @@ def main():
         mime_type = get_image_mime_type(image_path)
         with open(image_path, "rb") as image_fd:
             b64_image = base64.b64encode(image_fd.read()).decode(encoding="utf-8")
+        width, height = get_image_dimensions(image_path)
+        scale = float(args.pixels) / float(width + height)
+        width = math.floor(float(width) * scale / 16) * 16
+        height = math.floor(float(height) * scale / 16) * 16
     else :
         b64_image = None
     if args.free_comfyui :
@@ -152,8 +186,11 @@ def main():
         if proc.returncode != 0:
             logger.error(f"ERROR: command \"{' '.join(cmd)}\" returned {proc.returncode}")
             exit(proc.returncode)
-    cmd = f"uv run comfy workflow set-slot {args.workflow}".split()
-    proc = subprocess.run(cmd + [f"{args.slot}={response.choices[0].message.content}"])
+    cmd = f"uv run comfy workflow set-slot {args.workflow}".split() + [f"{args.prompt_slot}={response.choices[0].message.content}"]
+    if b64_image != None :
+        cmd = cmd + [f"{args.width_slot}={width}", f"{args.height_slot}={height}"]
+    logger.debug(f"Prompt edit {cmd}")
+    proc = subprocess.run(cmd )
     if proc.returncode != 0:
         logger.error(f"ERROR: command \"{' '.join(cmd)}\" returned {proc.returncode}")
         exit(proc.returncode)
