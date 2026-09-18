@@ -17,7 +17,7 @@ services:
       - 8188:8188
     volumes:
       - ./input:/home/ubuntu/comfyui/input
-      - ./output:/home/ubuntu/comfyui/output
+      - comfy-output:/home/ubuntu/comfyui/output
       - ${MODEL_DIR}:/home/ubuntu/comfyui/models
       - ./workflows:/home/ubuntu/comfyui/user/default/workflows
     devices:
@@ -46,4 +46,5 @@ networks: # Define a custom network
     driver: bridge
 
 volumes:
-  open-webui: # Define the named volume
+  open-webui:
+  comfy-output:

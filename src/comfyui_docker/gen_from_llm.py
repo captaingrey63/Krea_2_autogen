@@ -81,21 +81,29 @@ def main():
     system_prompt = prompt_file.read_text(encoding="utf-8")
     width = 1024
     height = 1024
-    # Read in the base image if supplied
+    images = []
+    # Read in the base image(s) if supplied
     if args.image != None :
         image_path = Path(args.image)
-        if not image_path.is_file():
-            print(f"ERROR: can't find {image_path}")
+        if image_path.is_file() :
+            images.append({"image_path":image_path})
+        elif image_path.is_dir() :
+            image_files = list(image_path.glob("*.png", case_sensitive=False)) + list(image_path.glob("*.jpg", case_sensitive=False)) + list(image_path.glob("*.jpeg", case_sensitive=False))
+            for image in image_files :
+                images.append({"image_path":image})
+        else:
+            print(f"ERROR: can't find an image at {image_path}")
             exit(1)
-        mime_type = get_image_mime_type(image_path)
-        with open(image_path, "rb") as image_fd:
-            b64_image = base64.b64encode(image_fd.read()).decode(encoding="utf-8")
-        width, height = get_image_dimensions(image_path)
-        scale = float(args.pixels) / float(width + height)
-        width = math.floor(float(width) * scale / 16) * 16
-        height = math.floor(float(height) * scale / 16) * 16
+        for i, _ in enumerate(images) :
+            width, height = get_image_dimensions(images[i]['image_path'])
+            scale = float(args.pixels) / float(width + height)
+            width = math.floor(float(width) * scale / 16) * 16
+            height = math.floor(float(height) * scale / 16) * 16
+            images[i]['width'] = width
+            images[i]['height'] = height
     else :
-        b64_image = None
+        images.append({"image_path":None, "width": width, "height": height})
+    logger.info(images)
     if args.free_comfyui :
         logger.info("Freeing ComfyUI Memory Use")
         cmd = "uv run comfy free --free-memory".split()
@@ -113,14 +121,59 @@ def main():
     client = OpenAI(base_url = base_url,
                     api_key = api_key)
     # Gather the user prompt if supplied
-    if args.random == True:
-        gender = random.choice(package_files("comfyui_docker.data").joinpath("gender.txt").read_text().splitlines())
-        character_type = random.choice(package_files("comfyui_docker.data").joinpath("character_type.txt").read_text().splitlines())
-        style = random.choice(package_files("comfyui_docker.data").joinpath("style.txt").read_text().splitlines())
+    for i, _ in enumerate(images) :
+        if args.random == True:
+            gender = random.choice(package_files("comfyui_docker.data").joinpath("gender.txt").read_text().splitlines())
+            character_type = random.choice(package_files("comfyui_docker.data").joinpath("character_type.txt").read_text().splitlines())
+            style = random.choice(package_files("comfyui_docker.data").joinpath("style.txt").read_text().splitlines())
+            messages = [
+                    {"role": "system", "content": "Make a one sentence description with the age, gender, general description of significant features, clothing and background. Include a style of image to generate. Only output the sentence, no formatting."},
+                    {"role": "user", "content": f"An image in the style of {style} of a {gender} {character_type} of a random age over 18 in a random setting and random pose"}
+                ]
+            try :
+                response = client.chat.completions.create(
+                    model=args.model,
+                    messages=messages,
+                    max_tokens=args.max_tokens,
+                    temperature=args.temperature,
+                )
+            except BadRequestError as e :
+                print (f"{e}")
+                exit(1)
+            except InternalServerError as e :
+                print (f"{e}")
+                exit(1)
+            logger.debug(response)
+            logger.info(f"Response\n{response.choices[0].message.content}")
+            if len(response.choices[0].message.content) < 10 :
+                logger.error("LLM response too short")
+                exit(1)
+            images[i]['base_prompt'] = response.choices[0].message.content
+        elif args.PROMPT != None and len(args.PROMPT) > 0 :
+            images[i]['base_prompt'] = ' '.join(args.PROMPT)
+        else : 
+            images[i]['base_prompt'] = None
+        # Construct the LLM Prompt
         messages = [
-                {"role": "system", "content": "Make a one sentence description with the age, gender, general description of significant features, clothing and background. Include a style of image to generate. Only output the sentence, no formatting."},
-                {"role": "user", "content": f"An image in the style of {style} of a {gender} {character_type} of a random age over 18 in a random setting and random pose"}
-            ]
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": None}
+        ]
+        if images[i]['base_prompt'] == None and images[i]['image_path'] == None :
+            print("ERROR: Must supply at least one of a prompt or image")
+            exit(1)
+        elif images[i]['image_path'] == None :
+            messages[1]["content"] = images[i]['base_prompt']
+        else :
+            messages[1]["content"] = []
+            if images[i]['base_prompt'] != None :
+                messages[1]["content"].append({"type": "text", "text": images[i]['base_prompt']})
+            mime_type = get_image_mime_type(images[i]['image_path'])
+            with open(images[i]['image_path'], "rb") as image_fd :
+                b64_image = base64.b64encode(image_fd.read()).decode(encoding="utf-8")
+            messages[1]["content"].append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_image}"}})
+
+        logger.debug(json.dumps(messages, indent=2))
+
         try :
             response = client.chat.completions.create(
                 model=args.model,
@@ -135,51 +188,13 @@ def main():
             print (f"{e}")
             exit(1)
         logger.debug(response)
-        logger.info(f"Response\n{response.choices[0].message.content}")
+        logger.info(f"Response for {images[i]['image_path']}\n{response.choices[0].message.content}\n")
         if len(response.choices[0].message.content) < 10 :
             logger.error("LLM response too short")
             exit(1)
-        prompt = response.choices[0].message.content
-    elif args.PROMPT != None and len(args.PROMPT) > 0 :
-        prompt = ' '.join(args.PROMPT)
-    else : 
-        prompt = None
-    
-    messages = [
-        {"role": "system", "content": system_prompt}
-    ]
-    if b64_image == None :
-        if prompt == None:
-            print("ERROR: Must supply at least one of a prompt or image")
-            exit(1)
-        messages.append({"role": "user", "content": prompt})
-    if b64_image != None :
-        content = {"role": "user", "content" : []}
-        if prompt != None:
-            content["content"].append({"type": "text", "text": prompt})
-        content["content"].append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{b64_image}"}})
-        messages.append(content)
+        images[i]["positive_prompt"] = response.choices[0].message.content
 
-    logger.debug(json.dumps(messages, indent=2))
-
-    try :
-        response = client.chat.completions.create(
-            model=args.model,
-            messages=messages,
-            max_tokens=args.max_tokens,
-            temperature=args.temperature,
-        )
-    except BadRequestError as e :
-        print (f"{e}")
-        exit(1)
-    except InternalServerError as e :
-        print (f"{e}")
-        exit(1)
-    logger.debug(response)
-    logger.info(f"Response\n{response.choices[0].message.content}\n")
-    if len(response.choices[0].message.content) < 10 :
-        logger.error("LLM response too short")
-        exit(1)
+    # Done with the LLM, free from memory if needed
     if args.free_model :
         logger.info("Freeing Docker Model memory")
         cmd = "docker model unload --all".split()
@@ -187,22 +202,21 @@ def main():
         if proc.returncode != 0:
             logger.error(f"ERROR: command \"{' '.join(cmd)}\" returned {proc.returncode}")
             exit(proc.returncode)
-    cmd = f"uv run comfy workflow set-slot {args.workflow}".split() + [f"{args.prompt_slot}={response.choices[0].message.content}"]
-    if b64_image != None :
-        cmd = cmd + [f"{args.width_slot}={width}", f"{args.height_slot}={height}"]
-    logger.debug(f"Prompt edit {cmd}")
-    proc = subprocess.run(cmd )
-    if proc.returncode != 0:
-        logger.error(f"ERROR: command \"{' '.join(cmd)}\" returned {proc.returncode}")
-        exit(proc.returncode)
-    logger.info("Queuing ComfyUI workflow")
-    cmd = f"uv run comfy run --workflow {args.workflow}".split()
-    if args.wait == True :
-        cmd.append("--wait")
-    proc = subprocess.run(cmd)
-    if proc.returncode != 0:
-        logger.error(f"ERROR: command \"{' '.join(cmd)}\" returned {proc.returncode}")
-        exit(proc.returncode)
+    for image in images :
+        cmd = f"uv run comfy workflow set-slot {args.workflow}".split() + [f"{args.prompt_slot}={image['positive_prompt']}", f"{args.width_slot}={image['width']}", f"{args.height_slot}={image['height']}"]
+        logger.debug(f"Prompt edit {cmd}")
+        proc = subprocess.run(cmd )
+        if proc.returncode != 0:
+            logger.error(f"ERROR: command \"{' '.join(cmd)}\" returned {proc.returncode}")
+            exit(proc.returncode)
+        logger.info(f"Queuing ComfyUI workflow for {images[i]['image_path']}")
+        cmd = f"uv run comfy run --workflow {args.workflow}".split()
+        if args.wait == True :
+            cmd.append("--wait")
+        proc = subprocess.run(cmd)
+        if proc.returncode != 0:
+           logger.error(f"ERROR: command \"{' '.join(cmd)}\" returned {proc.returncode}")
+           exit(proc.returncode)
     
 if __name__ == "__main__":
     main()
