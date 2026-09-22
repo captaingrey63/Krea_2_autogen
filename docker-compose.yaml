@@ -1,7 +1,7 @@
 services:
   comfy:
     working_dir: /home/ubuntu/comfyui
-    command: python main.py --listen --reserve-vram 1.5 --port 8188
+    command: python main.py --listen --reserve-vram 1.5 --port 8188 --enable-manager
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8188/"]
       interval: 30s

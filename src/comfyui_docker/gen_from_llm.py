@@ -46,6 +46,11 @@ def get_image_dimensions(image_path):
     height, width = image.shape[:2]
 
     return width, height
+def scale_dimensions(width:int, height:int, pixels:int) -> tuple[int,int] :
+    scale = float(pixels) / float(width + height)
+    new_width = math.floor(float(width) * scale / 16) * 16
+    new_height = math.floor(float(height) * scale / 16) * 16
+    return new_width, new_height
 
 def main():
     parser = ArgumentParser()
@@ -59,13 +64,17 @@ def main():
     parser.add_argument("--workflow", "-w", default="workflows/krea_2_turbo.json")
     parser.add_argument("--prompt-slot", "-S", default="6.text")
     parser.add_argument("--width-slot", default="9.width")
+    parser.add_argument("--width", type=int, default=1024)
     parser.add_argument("--height-slot", default="9.height")
+    parser.add_argument("--height", type=int, default=1024)
     parser.add_argument("--pixels", type=int, default=2048, help="Width + height for generated image from a supplied image")
     parser.add_argument("--api-key", "-a", type=str)
     parser.add_argument("--system-prompt", "-s", type=str)
     parser.add_argument("--max-tokens", "-M", type=int, default=2048)
     parser.add_argument("--temperature", "-t", type=float, default=0.7)
     parser.add_argument("--image")
+    parser.add_argument("--seed-slot", default="8.seed")
+    parser.add_argument("--seed", type=int)
     parser.add_argument("--random", action="store_true")
     parser.add_argument("--wait", action="store_true")
     args = parser.parse_args()
@@ -96,13 +105,12 @@ def main():
             exit(1)
         for i, _ in enumerate(images) :
             width, height = get_image_dimensions(images[i]['image_path'])
-            scale = float(args.pixels) / float(width + height)
-            width = math.floor(float(width) * scale / 16) * 16
-            height = math.floor(float(height) * scale / 16) * 16
-            images[i]['width'] = width
-            images[i]['height'] = height
+            images[i]['width'], images[i]['height'] = \
+                scale_dimensions(width, height, args.pixels)
     else :
-        images.append({"image_path":None, "width": width, "height": height})
+        new_width, new_height = \
+            scale_dimensions(args.width if args.width != None else width, args.height if args.height != None else height, args.pixels)
+        images.append({"image_path":None, "width": new_width, "height": new_height})
     logger.info(images)
     if args.free_comfyui :
         logger.info("Freeing ComfyUI Memory Use")
@@ -203,7 +211,7 @@ def main():
             logger.error(f"ERROR: command \"{' '.join(cmd)}\" returned {proc.returncode}")
             exit(proc.returncode)
     for image in images :
-        cmd = f"uv run comfy workflow set-slot {args.workflow}".split() + [f"{args.prompt_slot}={image['positive_prompt']}", f"{args.width_slot}={image['width']}", f"{args.height_slot}={image['height']}"]
+        cmd = f"uv run comfy workflow set-slot {args.workflow}".split() + [f"{args.prompt_slot}={image['positive_prompt']}", f"{args.width_slot}={image['width']}", f"{args.height_slot}={image['height']}", f"{args.seed_slot}={args.seed if args.seed != None else random.getrandbits(31)}"]
         logger.debug(f"Prompt edit {cmd}")
         proc = subprocess.run(cmd )
         if proc.returncode != 0:

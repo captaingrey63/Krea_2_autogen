@@ -12,8 +12,8 @@ COPY ./comfy-config.ini /.root/.config/comfy-cli/config.ini
 WORKDIR /home/ubuntu/comfyui
 RUN --mount=type=cache,target=/root/.cache/pip \
     git clone --depth 1 https://github.com/ltdrdata/ComfyUI-Impact-Pack.git custom_nodes/comfyui-impact-pack \
- && git clone --depth 1 https://github.com/city96/ComfyUI-GGUF custom-nodes/comfyui-gguf \
- && pip install -r custom_nodes/comfyui-impact-pack/requirements.txt gguf
+ && git clone --depth 1 https://github.com/molbal/ComfyUI-GGUF custom_nodes/comfyui-gguf \
+ && pip install -r custom_nodes/comfyui-impact-pack/requirements.txt -r custom_nodes/comfyui-gguf/requirements.txt
 
 WORKDIR /home/ubuntu/comfyui/
 ARG USERID=1000
