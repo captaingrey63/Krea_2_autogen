@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "comfy-cli>=1.20.0",
+    "llama-index-workflows==2.26.0",
     "docker>=7.2.0",
     "openai>=3.13.0",
     "opencv-python-headless"
@@ -16,6 +17,7 @@ dependencies = [
 
 [project.scripts]
 gen_from_llm = "comfyui_docker.gen_from_llm:main"
+gen_from_llm_workflows = "comfyui_docker.gen_from_llm_workflows:main"
 
 [build-system]
 requires = ["uv_build>=0.12.10,<0.13.0"]

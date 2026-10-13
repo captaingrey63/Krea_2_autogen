@@ -5,7 +5,6 @@ from importlib.resources import files as package_files
 from argparse import ArgumentParser
 from openai import OpenAI, BadRequestError, InternalServerError
 import base64
-import imghdr
 import json
 from typing import Dict, List, Any
 import random
@@ -16,12 +15,23 @@ logger = logging.getLogger("gen_from_llm")
 console_handler = logging.StreamHandler()
 logger.addHandler(console_handler)
 logger.setLevel(logging.INFO)
+
 def get_image_mime_type(file_path:Path):
-    """Detect image MIME type from file path using imghdr."""
-    mime_type = imghdr.what(file_path)
-    if mime_type:
-        return f"image/{mime_type}"
-    return None
+    """Detect image MIME type from file extension.
+    
+    Replaces the deprecated imghdr module.
+    """
+    ext = file_path.suffix.lower()
+    mime_types = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.bmp': 'image/bmp',
+        '.tiff': 'image/tiff',
+        '.webp': 'image/webp',
+    }
+    return mime_types.get(ext, 'image/png')
 
 
 def get_image_dimensions(image_path):
