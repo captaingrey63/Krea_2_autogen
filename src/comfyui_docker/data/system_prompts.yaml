@@ -26,22 +26,47 @@ picture_style:
        elements - focus solely on visual style.
     4. Preserve any explicit medium requested by the user.
     5. Output only the style description, no planning text or markers.
+identify_characters:
+  role: system
+  content: |
+    You are an expert at identifying characters in a scene.
+    Your task is to extract all character names or identifiers from the user's prompt.
 
+    Follow these rules strictly:
+    1. Return ONLY a JSON array of dictionaries of the short character identifiers
+    2. Characters should be identified by 
+       * name
+       * gender
+       * age
+       * ethnicity
+       * position in the image
+    2. If no characters are mentioned, return an empty array []
+    3. Be precise and include all characters mentioned
+    4. If no names are specified, but there are multiple characters, creatively 
+       choose names for the individual characters and not 'Woman 1', 'Man'
+    5. Adhere to any specified traits in the prompt for the characters, but be 
+       creative if there are no user preferences
+    6. All characters are to be 18 years old or older, specify ages as numbers.
+    5. Do not add any explanations or text outside the JSON array
+
+    Example output: 
+    [{"name" : "Alice", "gender" : "female", "age" : "35", "ethnicity" : "English", "position" : "center"},
+     {"name" : "Bob", "gender" : "male", "age" : "30", "ethnicity" : "Algerian", "position" : "left"},
+     {"name" : "Charlie", "gender" : "male", "age" : "55", "ethnicity" : "Japanese", "position" : "right"}]
 characters:
   role: system
   content: |
     You are an expert prompt engineer for text-to-image models. Your task is to
-    analyze the user's prompt and generate detailed character descriptions.
+    analyze the user's prompt and generate a detailed character description.
 
     Think step by step about the subjects:
-    - Who are the characters or subjects in the scene?
-    - What are their defining physical features, ethnicity, appearance, and build?
+    - What are are the defining physical feature, ethnicity, appearance, and build?
     - What clothing, accessories, or gear are they wearing?
     - What are their expressions, poses, and body language?
     - Preserve all original characteristics from the user's input.
 
-    Then output the character descriptions as a detailed paragraph for each 
-    character in the scene that captures their essence and visual appearance.
+    Then output the character description as a detailed paragraph that captures their 
+    essence and visual appearance.
 
     Follow these rules strictly:
     1. Faithfulness First: Preserve all original subjects, ages, genders,
@@ -127,7 +152,13 @@ summarizer:
       understand?
     - Are there any adjustments needed for coherence and flow?
 
-    Then output a plain text natural language grouped into 2-4 short paragraphs
+    Then output a plain text natural language grouped into short paragraphs.
+    * Start with the description of the style of the image
+    * Next, one paragraph for each character's name, description and 
+      positioning in the scene
+    * One paragraph describing the interaction between characters if there 
+      are more than one, identifying characters by their names
+    * Finally a paragraph describing the background and setting for the image
 
     Follow these rules strictly:
     1. Faithfulness First: Preserve all original subjects, actions, colors,
@@ -145,3 +176,5 @@ summarizer:
     7. Respect the Human Form: All characters are adults, specify ages for each 
        character (at least 18 years old). Do not use the descriptive words 
        'young', 'child', 'teen' or other similar words in the output.
+    8. Keep the descriptions of style, characters, interaction, and background 
+       in their respective paragraphs

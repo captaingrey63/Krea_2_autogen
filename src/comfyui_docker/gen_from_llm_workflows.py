@@ -17,7 +17,7 @@ import random
 from argparse import ArgumentParser
 from importlib.resources import files as package_files
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Dict
 
 logger = logging.getLogger("gen_from_llm_workflows")
 console_handler = logging.StreamHandler()
@@ -32,11 +32,10 @@ if venv_path.exists():
 from workflows import Workflow, step
 from workflows.events import Event, StartEvent, StopEvent
 from pydantic import Field
-from typing import Optional
 
 # Import OpenAI client
 try:
-    from openai import OpenAI, BadRequestError, InternalServerError
+    from openai import AsyncOpenAI as OpenAI, BadRequestError, InternalServerError
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
@@ -61,6 +60,18 @@ class InteractionsEvent(Event):
 class BackgroundEvent(Event):
     """Event containing the background prompt component."""
     background: str = Field(description="Setting, environment, composition, atmospheric details")
+
+
+class CharacterListEvent(Event):
+    """Event containing the list of characters identified in the scene."""
+    characters: list[dict[str,str|int]] = Field(description="List of character identifiers")
+
+
+class CharacterDescriptionsEvent(Event):
+    """Event containing descriptions for each character."""
+    character_descriptions: Dict[str, str] = Field(
+        description="Dictionary mapping character names to their individual descriptions"
+    )
 
 
 class CombinedPromptEvent(StopEvent):
@@ -166,8 +177,22 @@ class PromptWorkflow(Workflow):
 
         return f"data:{mime_type};base64,{b64_image}"
 
-    def _call_llm(self, system_prompt: str, user_content: Any) -> str:
-        """Make a call to the LLM with the given system prompt and user content."""
+    async def _call_llm(self, system_prompt: str, user_content: Any, timeout: int = 60) -> str:
+        """Make a call to the LLM with the given system prompt and user content.
+        
+        Args:
+            system_prompt: The system prompt for the LLM
+            user_content: The user content for the LLM
+            timeout: Timeout in seconds for the LLM call (default: 60)
+            
+        Returns:
+            The LLM response text
+            
+        Raises:
+            asyncio.TimeoutError: If the LLM call takes longer than timeout seconds
+            BadRequestError: If there's a bad request error
+            InternalServerError: If there's an internal server error
+        """
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_content},
@@ -177,15 +202,21 @@ class PromptWorkflow(Workflow):
         logger.debug(f"LLM Call - User: {str(user_content)[:100]}...")
 
         try:
-            response = self.client.chat.completions.create(
-                model=self.llm_config.model,
-                messages=messages,
-                max_tokens=self.llm_config.max_tokens,
-                temperature=self.llm_config.temperature,
+            response = await asyncio.wait_for(
+                self.client.chat.completions.create(
+                    model=self.llm_config.model,
+                    messages=messages,
+                    max_tokens=self.llm_config.max_tokens,
+                    temperature=self.llm_config.temperature,
+                ),
+                timeout=timeout,
             )
             result = response.choices[0].message.content
             logger.info(f"LLM Response: {result}")
             return result
+        except asyncio.TimeoutError:
+            logger.error(f"LLM call timed out after {timeout} seconds")
+            raise
         except BadRequestError as e:
             logger.error(f"BadRequestError: {e}")
             raise
@@ -207,29 +238,23 @@ class PromptWorkflow(Workflow):
         else:
             user_content = self.user_prompt
 
-        picture_style = self._call_llm(system_prompt, user_content)
+        picture_style = await self._call_llm(system_prompt, user_content)
         return PictureStyleEvent(picture_style=picture_style)
 
     @step
-    async def generate_characters(self, ev: StartEvent) -> CharactersEvent:
-        """Generate the characters component of the prompt."""
-        system_prompt = self.system_prompts["characters"]["content"]
-
-        if self.image_path:
-            image_data_url = self._encode_image(self.image_path)
-            user_content = [
-                {"type": "text", "text": self.user_prompt},
-                {"type": "image_url", "image_url": {"url": image_data_url}},
-            ]
-        else:
-            user_content = self.user_prompt
-
-        characters = self._call_llm(system_prompt, user_content)
-        return CharactersEvent(characters=characters)
-
-    @step
-    async def generate_interactions(self, ev: StartEvent) -> InteractionsEvent:
-        """Generate the interactions component of the prompt."""
+    async def generate_interactions(self, ev: CharacterListEvent) -> InteractionsEvent:
+        """Generate the interactions component of the prompt.
+        
+        This step is conditionally executed - it only generates interactions
+        if there are 2 or more characters in the scene. For 0 or 1 characters,
+        it returns an empty string, effectively skipping meaningful interaction
+        description.
+        """
+        # Skip interactions if there are 0 or 1 characters
+        if len(ev.characters) <= 1:
+            logger.info(f"Skipping interactions generation: only {len(ev.characters)} character(s)")
+            return InteractionsEvent(interactions="")
+        
         system_prompt = self.system_prompts["interactions"]["content"]
 
         if self.image_path:
@@ -241,7 +266,7 @@ class PromptWorkflow(Workflow):
         else:
             user_content = self.user_prompt
 
-        interactions = self._call_llm(system_prompt, user_content)
+        interactions = await self._call_llm(system_prompt, user_content)
         return InteractionsEvent(interactions=interactions)
 
     @step
@@ -258,29 +283,142 @@ class PromptWorkflow(Workflow):
         else:
             user_content = self.user_prompt
 
-        background = self._call_llm(system_prompt, user_content)
+        background = await self._call_llm(system_prompt, user_content)
         return BackgroundEvent(background=background)
+
+    @step
+    async def identify_characters(self, ev: StartEvent) -> CharacterListEvent:
+        """Identify and list all characters in the scene from the user prompt or image."""
+        system_prompt = self.system_prompts["identify_characters"]["content"]
+
+        if self.image_path:
+            image_data_url = self._encode_image(self.image_path)
+            user_content = [
+                {"type": "text", "text": self.user_prompt},
+                {"type": "image_url", "image_url": {"url": image_data_url}},
+            ]
+        else:
+            user_content = self.user_prompt
+
+        result = await self._call_llm(system_prompt, user_content)
+        
+        # Parse the JSON response
+        import json as json_module
+        try:
+            # Try to extract JSON array from the result
+            # Handle potential markdown code blocks
+            result_clean = result.strip()
+            if result_clean.startswith('```') and result_clean.endswith('```'):
+                result_clean = result_clean[3:-3].strip()
+            if result_clean.startswith('json'):
+                result_clean = result_clean[4:].strip()
+            
+            characters = json_module.loads(result_clean)
+            if not isinstance(characters, list):
+                logger.warning(f"Expected JSON array, got: {result_clean}")
+                characters = []
+            return CharacterListEvent(characters=characters)
+        except (json_module.JSONDecodeError, ValueError) as e:
+            logger.error(f"Failed to parse character list JSON: {e}")
+            logger.error(f"Raw response: {result}")
+            # Fallback: try to extract names manually
+            return CharacterListEvent(characters=[])
+
+    @step
+    async def generate_individual_character_descriptions(
+        self, ev: CharacterListEvent
+    ) -> CharacterDescriptionsEvent:
+        """Generate a detailed description for each character individually.
+        
+        This method uses parallel execution to generate descriptions for all
+        characters concurrently, which significantly reduces the total time
+        compared to sequential execution. It also pre-encodes the image once
+        to avoid redundant encoding for each character.
+        
+        Args:
+            ev: CharacterListEvent containing the list of characters to describe
+            
+        Returns:
+            CharacterDescriptionsEvent with a dictionary mapping character names
+            to their individual descriptions
+        """
+        if not ev.characters:
+            logger.info("No characters to describe, returning empty descriptions")
+            return CharacterDescriptionsEvent(character_descriptions={})
+        
+        system_prompt = self.system_prompts["characters"]["content"]
+        
+        # Pre-encode image once if available
+        image_data_url = None
+        if self.image_path:
+            image_data_url = self._encode_image(self.image_path)
+        
+        # Calculate per-character timeout based on total timeout and number of characters
+        # Leave room for overhead (20% of total timeout)
+        per_character_timeout = max(10, 20 * len(ev.characters))  # At least 10s, scale with count
+        
+        logger.info(f"Generating descriptions for {len(ev.characters)} characters with timeout {per_character_timeout}s each")
+        
+        async def describe_character(character: dict[str, Any]) -> tuple[str, str]:
+            """Generate a description for a single character."""
+            try:
+                char_name = character.get('name', f"Character_{hash(str(character)) % 1000}")
+                
+                # Create character-specific user content
+                if image_data_url:
+                    user_content = [
+                        {"type": "text", "text": f"Focus on describing this character: {character}. {self.user_prompt}"},
+                        {"type": "image_url", "image_url": {"url": image_data_url}},
+                    ]
+                else:
+                    user_content = f"Focus on describing this character: {character}. {self.user_prompt}"
+                
+                description = await self._call_llm(system_prompt, user_content, timeout=per_character_timeout)
+                return char_name, description
+            except asyncio.TimeoutError:
+                logger.warning(f"Timeout generating description for character: {character.get('name', 'unknown')}")
+                return character.get('name', f"Character_{hash(str(character)) % 1000}"), f"Description timed out for {character.get('name', 'this character')}"
+            except Exception as e:
+                logger.error(f"Error generating description for character {character.get('name', 'unknown')}: {e}")
+                return character.get('name', f"Character_{hash(str(character)) % 1000}"), f"Error generating description for {character.get('name', 'this character')}"
+        
+        # Run all character descriptions in parallel
+        description_tasks = [describe_character(char) for char in ev.characters]
+        results = await asyncio.gather(*description_tasks, return_exceptions=False)
+        
+        # Build the character descriptions dictionary
+        character_descriptions = {name: desc for name, desc in results}
+        
+        return CharacterDescriptionsEvent(character_descriptions=character_descriptions)
 
     @step
     async def combine_prompts(
         self,
         picture_style_ev: PictureStyleEvent,
-        characters_ev: CharactersEvent,
-        interactions_ev: InteractionsEvent,
+        character_descriptions_ev: CharacterDescriptionsEvent,
         background_ev: BackgroundEvent,
+        interactions_ev: InteractionsEvent,
     ) -> CombinedPromptEvent:
         """Combine all prompt components into a single cohesive prompt."""
         system_prompt = self.system_prompts["summarizer"]["content"]
 
+        # Format character descriptions
+        characters_text = "\n".join(
+            f"{name}: {desc}" for name, desc in character_descriptions_ev.character_descriptions.items()
+        )
+        
+        # Format interactions (may be empty if 0 or 1 characters)
+        interactions_text = interactions_ev.interactions if interactions_ev.interactions else "No specific interactions"
+
         # Create a combined input for the summarizer
         combined_input = f"""Picture Style: {picture_style_ev.picture_style}
-Characters: {characters_ev.characters}
-Interactions: {interactions_ev.interactions}
+Characters: {characters_text}
+Interactions: {interactions_text}
 Background: {background_ev.background}
 
 Please combine these into a single, cohesive image-generation prompt."""
 
-        combined_prompt = self._call_llm(system_prompt, combined_input)
+        combined_prompt = await self._call_llm(system_prompt, combined_input)
         return CombinedPromptEvent(combined_prompt=combined_prompt)
 
 
@@ -360,7 +498,7 @@ async def run_workflow(args: Any) -> str:
     )
 
     # Run the workflow
-    handler = workflow.run()
+    handler = workflow.run(timeout=120)
     combined_event = None
 
     async for event in handler.stream_events():
