@@ -47,7 +47,7 @@ services:
 
 models:
   gemma:
-    model: local/gemma:E4B-Q4_k_m
+    model: docker.io/local/gemma:E4B-Q4_k_m
     context_size: 32768
 
 
