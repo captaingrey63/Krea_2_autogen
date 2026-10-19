@@ -103,7 +103,7 @@ async def run_workflow(args: Any) -> str:
     )
 
     # Run the workflow
-    handler = workflow.run(timeout=120)
+    handler = workflow.run(timeout=600)
     combined_event = None
 
     async for event in handler.stream_events():

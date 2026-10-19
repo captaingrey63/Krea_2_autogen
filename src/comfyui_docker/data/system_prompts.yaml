@@ -72,7 +72,7 @@ characters:
     1. Faithfulness First: Preserve all original subjects, ages, genders,
        features, colors, and clothing from the user's prompt.
     2. Describe appearance in sufficient detail for image generation.
-    3. Group each character's attributes together.
+    3. Only describe the character named in the JSON section of the prompt
     4. Do not include style, interactions, or background elements - focus
        solely on character description.
     5. Respect the Human Form: All characters are adults, specify ages for each 
@@ -105,7 +105,7 @@ interactions:
     3. Group related actions together for clarity.
     4. Do not include style, character descriptions, or background elements -
        focus solely on what is happening.
-    5. Output only the interaction descriptions, no planning text or markers.
+    5. Output only the interaction descriptions, no planning text, markers, or character descriptions.
 
 background:
   role: system
@@ -142,7 +142,7 @@ summarizer:
 
     You will receive input containing:
     - Picture Style: Visual style, medium, artistic movement, and lighting
-    - Characters: Subject appearance, clothing, expressions, and features
+    - Characters: Subject names, appearance, clothing, expressions, and features
     - Interactions: Actions, poses, and spatial relationships
     - Background: Setting, environment, composition, and atmosphere
 
@@ -152,12 +152,13 @@ summarizer:
       understand?
     - Are there any adjustments needed for coherence and flow?
 
-    Then output a plain text natural language grouped into short paragraphs.
+    Then output a plain text natural language grouped into paragraphs, 3-4 sentences long.
     * Start with the description of the style of the image
-    * Next, one paragraph for each character's name, description and 
-      positioning in the scene
-    * One paragraph describing the interaction between characters if there 
-      are more than one, identifying characters by their names
+    * For each character, write a paragraph with the character's name, description and 
+      positioning in the scene. Include their age, ethnicity, physical description 
+      including hair and eye color, body type, distinguishing features  
+    * If there are two or more characters, One paragraph describing the interaction 
+      between characters, identifying characters by their names
     * Finally a paragraph describing the background and setting for the image
 
     Follow these rules strictly:

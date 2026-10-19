@@ -24,7 +24,7 @@ console_handler = logging.StreamHandler()
 logger.addHandler(console_handler)
 logger.setLevel(logging.INFO)
 
-from workflows import Workflow, step
+from workflows import Workflow, step, Context
 from workflows.events import Event, StartEvent, StopEvent
 from pydantic import BaseModel, Field
 
@@ -32,6 +32,9 @@ from pydantic import BaseModel, Field
 from openai import AsyncOpenAI as OpenAI, BadRequestError
 
 # Define event types for each category
+class ProgressEvent(Event):
+    msg: str = Field(description="Message for the event stream")
+
 class PromptEvent(StartEvent):
     prompt: str = Field(description="Base Prompt for the workflow")
 
@@ -198,14 +201,14 @@ class PromptWorkflow(Workflow):
             raise
 
     @step
-    async def generate_picture_style(self, ev: StartEvent) -> PictureStyleEvent:
+    async def generate_picture_style(self, ctx: Context, ev: StartEvent) -> PictureStyleEvent:
         """Generate the picture style component of the prompt."""
         system_prompt = self.system_prompts["picture_style"]["content"]
         picture_style = await self._call_llm(system_prompt, self.user_prompt)
         return PictureStyleEvent(picture_style=picture_style)
 
     @step
-    async def generate_interactions(self, evs: list[CharacterDescriptionEvent]) -> InteractionsEvent:
+    async def generate_interactions(self, ctx: Context, evs: list[CharacterDescriptionEvent]) -> InteractionsEvent:
         """Generate the interactions component of the prompt.
         
         This step is conditionally executed - it only generates interactions
@@ -225,14 +228,14 @@ class PromptWorkflow(Workflow):
         return InteractionsEvent(characters=characters, interactions=interactions)
 
     @step
-    async def generate_background(self, ev: StartEvent) -> BackgroundEvent:
+    async def generate_background(self, ctx: Context, ev: StartEvent) -> BackgroundEvent:
         """Generate the background component of the prompt."""
         system_prompt = self.system_prompts["background"]["content"]
         background = await self._call_llm(system_prompt, self.user_prompt)
         return BackgroundEvent(background=background)
 
     @step
-    async def identify_characters(self, ev: StartEvent) -> list[CharacterEvent]|InteractionsEvent:
+    async def identify_characters(self, ctx: Context, ev: StartEvent) -> list[CharacterEvent]|InteractionsEvent:
         """Identify and list all characters in the scene from the user prompt or image."""
         system_prompt = self.system_prompts["identify_characters"]["content"]
 
@@ -272,7 +275,7 @@ class PromptWorkflow(Workflow):
 
     @step
     async def generate_character_description(
-        self, ev: CharacterEvent
+        self, ctx: Context, ev: CharacterEvent
     ) -> CharacterDescriptionEvent:
         """Generate a detailed description for each character individually."""
         system_prompt = self.system_prompts["characters"]["content"]
@@ -280,11 +283,13 @@ class PromptWorkflow(Workflow):
         char_name = character.get('name', f"Character_{hash(str(character)) % 1000}")
                 
         description = await self._call_llm(system_prompt, f"Focus on describing this character: {character}. {self.user_prompt}")
+        ctx.write_event_to_stream(ProgressEvent(msg=f"Character Generated {char_name}, {str(description)}"))
         return CharacterDescriptionEvent(name=char_name, description=description)
 
     @step
     async def combine_prompts(
         self,
+        ctx: Context, 
         picture_style_ev: PictureStyleEvent,
         interaction_ev: InteractionsEvent,
         background_ev: BackgroundEvent,
