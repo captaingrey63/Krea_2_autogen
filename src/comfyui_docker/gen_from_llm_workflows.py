@@ -40,6 +40,14 @@ async def run_workflow(args: Any) -> str:
 
     system_prompts = yaml.safe_load(prompts_file.read_text(encoding="utf-8"))
 
+    
+    # Load character prompts from YAML file
+    character_prompts_file = package_files("comfyui_docker.data").joinpath("character_prompts.yaml")
+    if character_prompts_file.is_file():
+        character_prompts = yaml.safe_load(character_prompts_file.read_text(encoding="utf-8"))
+    else:
+        character_prompts = None
+    
     # Set up LLM config
     api_key = os.environ.get("OPENAI_API_KEY", None) if args.api_key is None else args.api_key
     if api_key is None:
@@ -98,6 +106,7 @@ async def run_workflow(args: Any) -> str:
         image_config=image_config,
         user_prompt=user_prompt,
         system_prompts=system_prompts,
+        character_prompts=character_prompts,
         image_path=image_path,
         timeout=120
     )
@@ -214,7 +223,25 @@ def main():
     parser.add_argument("--seed", type=int)
     parser.add_argument("--random", action="store_true")
     parser.add_argument("--wait", action="store_false")
+    parser.add_argument("--list-characters", "-l", action="store_true",
+                        help="List character names from character_prompts.yaml and exit")
     args = parser.parse_args()
+
+    # Handle --list-characters flag
+    if args.list_characters:
+        character_prompts_file = package_files("comfyui_docker.data").joinpath("character_prompts.yaml")
+        if character_prompts_file.is_file():
+            character_prompts = yaml.safe_load(character_prompts_file.read_text(encoding="utf-8"))
+            if character_prompts:
+                print("Available characters:")
+                for name in character_prompts.keys():
+                    print(f"  - {name}")
+            else:
+                print("No characters found in character_prompts.yaml")
+        else:
+            print("ERROR: character_prompts.yaml not found")
+            sys.exit(1)
+        sys.exit(0)
 
     # Run the async workflow
     asyncio.run(run_workflow(args))

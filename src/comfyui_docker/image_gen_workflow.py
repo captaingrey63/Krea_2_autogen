@@ -114,6 +114,7 @@ class PromptWorkflow(Workflow):
         user_prompt: str,
         system_prompts: dict[str, dict[str, str]],
         image_path: Optional[Path] = None,
+        character_prompts: Optional[dict[str, str]] = None,
         timeout: int = 45,
         seed: int = -1
     ):
@@ -122,6 +123,7 @@ class PromptWorkflow(Workflow):
         self.image_config = image_config
         self.user_prompt = user_prompt
         self.system_prompts = system_prompts
+        self.character_prompts = character_prompts or {}
         self.seed = seed
         self.image_data = PromptWorkflow._encode_image(image_path) if image_path != None else None
         self.client = OpenAI(
@@ -281,9 +283,19 @@ class PromptWorkflow(Workflow):
         system_prompt = self.system_prompts["characters"]["content"]
         character = ev.character
         char_name = character.get('name', f"Character_{hash(str(character)) % 1000}")
-                
-        description = await self._call_llm(system_prompt, f"Focus on describing this character: {character}. {self.user_prompt}")
-        ctx.write_event_to_stream(ProgressEvent(msg=f"Character Generated {char_name}, {str(description)}"))
+        
+        # Check if we have a pre-defined character description in character_prompts
+        if char_name in self.character_prompts:
+            # Use the database description as context for the LLM
+            char_description = self.character_prompts[char_name]
+            user_content = f"Character: {character}. Base description: {char_description}. {self.user_prompt}"
+            description = await self._call_llm(system_prompt, user_content)
+            ctx.write_event_to_stream(ProgressEvent(msg=f"Character Generated {char_name} with database context"))
+        else:
+            # Generate description using LLM without database context
+            description = await self._call_llm(system_prompt, f"Focus on describing this character: {character}. {self.user_prompt}")
+            ctx.write_event_to_stream(ProgressEvent(msg=f"Character Generated {char_name}, {str(description)}"))
+        
         return CharacterDescriptionEvent(name=char_name, description=description)
 
     @step
@@ -323,6 +335,13 @@ async def run_workflow(args: Any) -> str:
         sys.exit(1)
 
     system_prompts = yaml.safe_load(prompts_file.read_text(encoding="utf-8"))
+    
+    # Load character prompts from YAML file
+    character_prompts_file = package_files("comfyui_docker.data").joinpath("character_prompts.yaml")
+    if character_prompts_file.is_file():
+        character_prompts = yaml.safe_load(character_prompts_file.read_text(encoding="utf-8"))
+    else:
+        character_prompts = None
 
     # Set up LLM config
     api_key = os.environ.get("OPENAI_API_KEY", None) if args.api_key is None else args.api_key
@@ -373,6 +392,7 @@ async def run_workflow(args: Any) -> str:
         image_config=image_config,
         user_prompt=user_prompt,
         system_prompts=system_prompts,
+        character_prompts=character_prompts,
         image_path=image_path,
     )
 
@@ -422,7 +442,25 @@ def main():
     parser.add_argument("--max-tokens", "-M", type=int, default=2048)
     parser.add_argument("--temperature", "-t", type=float, default=0.7)
     parser.add_argument("--image")
+    parser.add_argument("--list-characters", "-l", action="store_true",
+                        help="List character names from character_prompts.yaml and exit")
     args = parser.parse_args()
+
+    # Handle --list-characters flag
+    if args.list_characters:
+        character_prompts_file = package_files("comfyui_docker.data").joinpath("character_prompts.yaml")
+        if character_prompts_file.is_file():
+            character_prompts = yaml.safe_load(character_prompts_file.read_text(encoding="utf-8"))
+            if character_prompts:
+                print("Available characters:")
+                for name in character_prompts.keys():
+                    print(f"  - {name}")
+            else:
+                print("No characters found in character_prompts.yaml")
+        else:
+            print("ERROR: character_prompts.yaml not found")
+            sys.exit(1)
+        sys.exit(0)
 
     # Run the async workflow
     asyncio.run(run_workflow(args))
