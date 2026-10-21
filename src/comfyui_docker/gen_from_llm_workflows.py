@@ -48,6 +48,13 @@ async def run_workflow(args: Any) -> str:
     else:
         character_prompts = None
     
+    # Load style prompts from YAML file
+    style_prompts_file = package_files("comfyui_docker.data").joinpath("style_prompts.yaml")
+    if style_prompts_file.is_file():
+        style_prompts = yaml.safe_load(style_prompts_file.read_text(encoding="utf-8"))
+    else:
+        style_prompts = None
+    
     # Set up LLM config
     api_key = os.environ.get("OPENAI_API_KEY", None) if args.api_key is None else args.api_key
     if api_key is None:
@@ -107,6 +114,7 @@ async def run_workflow(args: Any) -> str:
         user_prompt=user_prompt,
         system_prompts=system_prompts,
         character_prompts=character_prompts,
+        style_prompts=style_prompts,
         image_path=image_path,
         timeout=120
     )
@@ -225,6 +233,8 @@ def main():
     parser.add_argument("--wait", action="store_false")
     parser.add_argument("--list-characters", "-l", action="store_true",
                         help="List character names from character_prompts.yaml and exit")
+    parser.add_argument("--list-styles", action="store_true",
+                        help="List style names from style_prompts.yaml and exit")
     args = parser.parse_args()
 
     # Handle --list-characters flag
@@ -240,6 +250,22 @@ def main():
                 print("No characters found in character_prompts.yaml")
         else:
             print("ERROR: character_prompts.yaml not found")
+            sys.exit(1)
+        sys.exit(0)
+    
+    # Handle --list-styles flag
+    if args.list_styles:
+        style_prompts_file = package_files("comfyui_docker.data").joinpath("style_prompts.yaml")
+        if style_prompts_file.is_file():
+            style_prompts = yaml.safe_load(style_prompts_file.read_text(encoding="utf-8"))
+            if style_prompts:
+                print("Available styles:")
+                for name in style_prompts.keys():
+                    print(f"  - {name}")
+            else:
+                print("No styles found in style_prompts.yaml")
+        else:
+            print("ERROR: style_prompts.yaml not found")
             sys.exit(1)
         sys.exit(0)
 

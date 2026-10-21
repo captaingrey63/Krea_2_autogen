@@ -115,6 +115,7 @@ class PromptWorkflow(Workflow):
         system_prompts: dict[str, dict[str, str]],
         image_path: Optional[Path] = None,
         character_prompts: Optional[dict[str, str]] = None,
+        style_prompts: Optional[dict[str, str]] = None,
         timeout: int = 45,
         seed: int = -1
     ):
@@ -124,6 +125,7 @@ class PromptWorkflow(Workflow):
         self.user_prompt = user_prompt
         self.system_prompts = system_prompts
         self.character_prompts = character_prompts or {}
+        self.style_prompts = style_prompts or {}
         self.seed = seed
         self.image_data = PromptWorkflow._encode_image(image_path) if image_path != None else None
         self.client = OpenAI(
@@ -206,7 +208,34 @@ class PromptWorkflow(Workflow):
     async def generate_picture_style(self, ctx: Context, ev: StartEvent) -> PictureStyleEvent:
         """Generate the picture style component of the prompt."""
         system_prompt = self.system_prompts["picture_style"]["content"]
-        picture_style = await self._call_llm(system_prompt, self.user_prompt)
+        
+        # Check if user prompt mentions any known styles
+        matched_styles = []
+        if self.style_prompts:
+            user_prompt_lower = self.user_prompt.lower()
+            # Sort styles by length (longest first) to match most specific styles first
+            sorted_styles = sorted(self.style_prompts.items(), key=lambda x: len(x[0]), reverse=True)
+            for style_name, style_data in sorted_styles:
+                if style_name.lower() in user_prompt_lower:
+                    matched_styles.append((style_name, style_data))
+        
+        # Build LLM prompt with style context if any styles match
+        if matched_styles:
+            # Use the first matched style (which will be the most specific due to sorting)
+            style_name, style_data = matched_styles[0]
+            if isinstance(style_data, dict):
+                style_description = style_data.get('description', '')
+            else:
+                style_description = style_data
+            
+            # Pass style description as context to LLM
+            user_content = f"Requested style: {style_name}. Style description: {style_description}. Original prompt: {self.user_prompt}"
+            picture_style = await self._call_llm(system_prompt, user_content)
+            ctx.write_event_to_stream(ProgressEvent(msg=f"Picture style generated with style database context: {style_name}"))
+        else:
+            # No matched style, use original behavior
+            picture_style = await self._call_llm(system_prompt, self.user_prompt)
+        
         return PictureStyleEvent(picture_style=picture_style)
 
     @step
@@ -270,6 +299,20 @@ class PromptWorkflow(Workflow):
             logger.error(f"Failed to parse character list JSON: {e}")
             logger.error(f"Raw response: {result}")
             characters = []
+        
+        # Enrich characters with metadata from character_prompts if available
+        if characters and self.character_prompts:
+            for character in characters:
+                char_name = character.get('name', '')
+                if char_name and char_name in self.character_prompts:
+                    char_data = self.character_prompts[char_name]
+                    # Add metadata fields to the character dict
+                    if isinstance(char_data, dict):
+                        character['gender'] = char_data.get('gender')
+                        character['age'] = char_data.get('age')
+                        character['ethnicity'] = char_data.get('ethnicity')
+                        # Keep description separate for later use
+        
         if len(characters) > 0:
             return [CharacterEvent(character=character) for character in characters]
         else :
@@ -284,11 +327,30 @@ class PromptWorkflow(Workflow):
         character = ev.character
         char_name = character.get('name', f"Character_{hash(str(character)) % 1000}")
         
-        # Check if we have a pre-defined character description in character_prompts
+        # Check if we have a pre-defined character in character_prompts
         if char_name in self.character_prompts:
-            # Use the database description as context for the LLM
-            char_description = self.character_prompts[char_name]
-            user_content = f"Character: {character}. Base description: {char_description}. {self.user_prompt}"
+            char_data = self.character_prompts[char_name]
+            # Build context from structured fields
+            if isinstance(char_data, dict):
+                gender = char_data.get('gender', 'unknown')
+                age = char_data.get('age', 'unknown')
+                ethnicity = char_data.get('ethnicity', 'unknown')
+                char_description = char_data.get('description', '')
+                
+                # Create context with all available metadata
+                context_parts = [
+                    f"Name: {char_name}",
+                    f"Gender: {gender}",
+                    f"Age: {age}",
+                    f"Ethnicity: {ethnicity}",
+                    f"Description: {char_description}"
+                ]
+                context = ". ".join(context_parts)
+                user_content = f"{context}. Scene: {self.user_prompt}"
+            else:
+                # Fallback for old format (just description string)
+                user_content = f"Character: {character}. Base description: {char_data}. {self.user_prompt}"
+            
             description = await self._call_llm(system_prompt, user_content)
             ctx.write_event_to_stream(ProgressEvent(msg=f"Character Generated {char_name} with database context"))
         else:
@@ -342,6 +404,13 @@ async def run_workflow(args: Any) -> str:
         character_prompts = yaml.safe_load(character_prompts_file.read_text(encoding="utf-8"))
     else:
         character_prompts = None
+    
+    # Load style prompts from YAML file
+    style_prompts_file = package_files("comfyui_docker.data").joinpath("style_prompts.yaml")
+    if style_prompts_file.is_file():
+        style_prompts = yaml.safe_load(style_prompts_file.read_text(encoding="utf-8"))
+    else:
+        style_prompts = None
 
     # Set up LLM config
     api_key = os.environ.get("OPENAI_API_KEY", None) if args.api_key is None else args.api_key
@@ -393,6 +462,7 @@ async def run_workflow(args: Any) -> str:
         user_prompt=user_prompt,
         system_prompts=system_prompts,
         character_prompts=character_prompts,
+        style_prompts=style_prompts,
         image_path=image_path,
     )
 
@@ -444,6 +514,8 @@ def main():
     parser.add_argument("--image")
     parser.add_argument("--list-characters", "-l", action="store_true",
                         help="List character names from character_prompts.yaml and exit")
+    parser.add_argument("--list-styles", action="store_true",
+                        help="List style names from style_prompts.yaml and exit")
     args = parser.parse_args()
 
     # Handle --list-characters flag
@@ -459,6 +531,22 @@ def main():
                 print("No characters found in character_prompts.yaml")
         else:
             print("ERROR: character_prompts.yaml not found")
+            sys.exit(1)
+        sys.exit(0)
+    
+    # Handle --list-styles flag
+    if args.list_styles:
+        style_prompts_file = package_files("comfyui_docker.data").joinpath("style_prompts.yaml")
+        if style_prompts_file.is_file():
+            style_prompts = yaml.safe_load(style_prompts_file.read_text(encoding="utf-8"))
+            if style_prompts:
+                print("Available styles:")
+                for name in style_prompts.keys():
+                    print(f"  - {name}")
+            else:
+                print("No styles found in style_prompts.yaml")
+        else:
+            print("ERROR: style_prompts.yaml not found")
             sys.exit(1)
         sys.exit(0)
 

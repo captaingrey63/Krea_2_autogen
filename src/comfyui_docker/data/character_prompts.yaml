@@ -1,14 +1,21 @@
-Yan Zhang: |
-  An adult Chinese woman, 28 years old. Her round face with wide set, hooded 
-  eyes that tilt downwards and a flattened wide nose gives her a unique 
-  appearance. She wears striking makeup, with pink glittering eyeshadow with
-  white eyeliner and white eyelashes, and glossy pink lips. She keeps her 
-  long fingernails perfectly manicured, glossy and red nails with rounded white 
-  french nail tips.
-Maisie Sterling: |
-  An adult English woman, 30 years old. She has a petite, lithe frame, and medium 
-  length straight black hair she keeps in a tight french braid draped over her left 
-  shoulder. Her pale blue eyes and pale skin with prnounced freckles on her cheeks, 
-  nose, and shoulders has modest makup, with matte dusk rose lips and faint blush 
-  on her cheeks. She has long black eyelashes with thin black eyeliner on her upper 
-  eyelids
+Yan Zhang:
+  gender: female
+  age: 28
+  ethnicity: Chinese
+  description: |
+    Her round face with wide set, hooded eyes that tilt downwards and a 
+    flattened wide nose gives her a unique appearance. She wears striking 
+    makeup, with pink glittering eyeshadow with white eyeliner and white 
+    eyelashes, and glossy pink lips. She keeps her long fingernails perfectly 
+    manicured, glossy and red nails with rounded white french nail tips.
+Maisie Sterling:
+  gender: female
+  age: 30
+  ethnicity: English
+  description: |
+    She has a petite, lithe frame, and medium length straight black hair she 
+    keeps in a tight french braid draped over her left shoulder. Her pale blue 
+    eyes and pale skin with prnounced freckles on her cheeks, nose, and 
+    shoulders has modest makup, with matte dusk rose lips and faint blush on 
+    her cheeks. She has long black eyelashes with thin black eyeliner on her 
+    upper eyelids
